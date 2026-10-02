@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAB Activity Location</title>
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--ink:#14253b;--mute:#5d6b7d;--line:#d3dae3;--accent:#0b4dbb;--err:#b3261e;--ok:#17724a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:560px;margin:0 auto;padding:20px 16px 110px}
+  h1{font-size:1.5rem;margin:8px 0 4px;letter-spacing:-.01em}
+  .sub{margin:0 0 20px;color:var(--mute)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  h2{font-size:1rem;margin:0 0 12px}
+  label{display:block;font-weight:600;font-size:.9rem;margin:12px 0 4px}
+  label:first-of-type{margin-top:0}
+  input{width:100%;height:48px;padding:0 12px;font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:10px}
+  input:focus,button:focus-visible{outline:3px solid #9bbcf5;border-color:var(--accent)}
+  input.bad{border-color:var(--err)}
+  .msg{color:var(--err);font-size:.85rem;margin:4px 0 0;min-height:0}
+  .dab{border-left:4px solid var(--accent)}
+  .dab-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .dab-head h2{margin:0}
+  .link{background:none;border:0;color:var(--err);font:inherit;font-size:.9rem;padding:8px;cursor:pointer}
+  .add{width:100%;height:48px;border:1.5px dashed var(--accent);color:var(--accent);background:transparent;border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px))}
+  .bar div{max-width:560px;margin:0 auto}
+  .go{width:100%;height:52px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+  .go[disabled]{opacity:.6}
+  .status{text-align:center;margin:0 0 8px;font-size:.9rem;color:var(--err)}
+  #done{display:none;text-align:center;padding:48px 8px}
+  #done h2{font-size:1.3rem;color:var(--ok)}
+  @media (prefers-reduced-motion:no-preference){.dab{animation:in .18s ease-out}@keyframes in{from{opacity:0;transform:translateY(6px)}}}
+</style>
+</head>
+<body>
+<main>
+  <div id="formView">
+    <h1>DAB activity location</h1>
+    <p class="sub">Enter the distributor once, then add each DAB and where they work.</p>
+
+    <section>
+      <h2>Distributor</h2>
+      <label for="prmId">Distributor PRM ID</label>
+      <input id="prmId" autocomplete="off" inputmode="text">
+      <label for="distName">Distributor name</label>
+      <input id="distName" autocomplete="off">
+      <label for="jpId">JP ID</label>
+      <input id="jpId" autocomplete="off">
+    </section>
+
+    <div id="dabs"></div>
+    <button type="button" class="add" id="addBtn">+ Add another DAB</button>
+  </div>
+
+  <div id="done">
+    <h2>Saved</h2>
+    <p id="doneMsg"></p>
+    <button type="button" class="add" id="again">Enter another distributor</button>
+  </div>
+</main>
+
+<div class="bar" id="bar"><div>
+  <p class="status" id="status" role="alert"></p>
+  <button type="button" class="go" id="submitBtn">Save</button>
+</div></div>
+
+<script>
+// Paste the Web app URL from Apps Script (Deploy > Manage deployments) here:
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzULYlRftfcTokyzk5IURjkPTxF6h_eImkZlxDGyWxO0S4cpcrIK5O3B7ih7O3CEUr3/exec";
+const MAX_DAB = 5;
+
+const $ = id => document.getElementById(id);
+const dabsEl = $("dabs");
+
+function addDab(){
+  const n = dabsEl.children.length + 1;
+  if (n > MAX_DAB) return;
+  const s = document.createElement("section");
+  s.className = "dab";
+  s.innerHTML = `
+    <div class="dab-head"><h2>DAB ${n}</h2>${n > 1 ? '<button type="button" class="link">Remove</button>' : ""}</div>
+    <label>Name</label><input data-f="name" autocomplete="off">
+    <label>User ID</label><input data-f="userId" autocomplete="off">
+    <label>Activity location</label><input data-f="location" autocomplete="off" placeholder="Town, village or area">`;
+  if (n > 1) s.querySelector(".link").onclick = () => { s.remove(); renumber(); };
+  dabsEl.appendChild(s);
+  renumber();
+  if (n > 1) s.querySelector("input").focus();
+}
+function renumber(){
+  [...dabsEl.children].forEach((s,i) => s.querySelector("h2").textContent = "DAB " + (i+1));
+  $("addBtn").style.display = dabsEl.children.length >= MAX_DAB ? "none" : "";
+}
+function clearErrors(){
+  document.querySelectorAll("input.bad").forEach(i => i.classList.remove("bad"));
+  $("status").textContent = "";
+}
+function collect(){
+  const dabs = [...dabsEl.children].map(s => {
+    const o = {}; s.querySelectorAll("input").forEach(i => o[i.dataset.f] = i.value.trim()); o._el = s; return o;
+  });
+  return {prmId:$("prmId").value.trim(), distName:$("distName").value.trim(), jpId:$("jpId").value.trim(), dabs};
+}
+function validate(d){
+  clearErrors();
+  let first = null;
+  const flag = el => { el.classList.add("bad"); first = first || el; };
+  if (!d.prmId) flag($("prmId"));
+  if (!d.distName) flag($("distName"));
+  if (!d.jpId) flag($("jpId"));
+  d.dabs.forEach((x,i) => {
+    const filled = x.name || x.userId || x.location;
+    if (i === 0 || filled) {
+      ["name","userId","location"].forEach(f => { if (!x[f]) flag(x._el.querySelector(`[data-f=${f}]`)); });
+    }
+  });
+  if (first) { first.scrollIntoView({block:"center"}); first.focus(); $("status").textContent = "Fill the highlighted fields."; }
+  return !first;
+}
+
+$("addBtn").onclick = addDab;
+$("submitBtn").onclick = async () => {
+  const d = collect();
+  if (!validate(d)) return;
+  const btn = $("submitBtn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  const payload = {prmId:d.prmId, distName:d.distName, jpId:d.jpId,
+    dabs:d.dabs.filter(x => x.name || x.userId || x.location).map(({name,userId,location}) => ({name,userId,location}))};
+  try {
+    const r = await fetch(SCRIPT_URL, {method:"POST", body:JSON.stringify(payload)});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Save failed");
+    $("doneMsg").textContent = `${payload.distName} (${payload.prmId}): ${payload.dabs.length} DAB${payload.dabs.length>1?"s":""} saved.`;
+    $("formView").style.display = "none"; $("bar").style.display = "none"; $("done").style.display = "block";
+  } catch (e) {
+    $("status").textContent = "Not saved. Check your network and try again.";
+  } finally { btn.disabled = false; btn.textContent = "Save"; }
+};
+$("again").onclick = () => {
+  ["prmId","distName","jpId"].forEach(i => $(i).value = "");
+  dabsEl.innerHTML = ""; addDab(); clearErrors();
+  $("done").style.display = "none"; $("formView").style.display = ""; $("bar").style.display = "";
+  window.scrollTo(0,0);
+};
+document.addEventListener("input", e => e.target.classList.remove("bad"));
+addDab();
+</script>
+</body>
+</html>
